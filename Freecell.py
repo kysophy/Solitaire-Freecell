@@ -146,6 +146,7 @@ class FreeCell:
 
                 self.card_images[(rank, suit_name)] = img
 
+
     def draw(self):
 
         self.canvas.delete("all")
@@ -207,18 +208,12 @@ class FreeCell:
         )
 
 
-# ============================================================
-# CLICK
-# ============================================================
-
     def click(self,event):
 
         x = event.x
         y = event.y
 
-        # =========================
-        # CLICK FREECELL
-        # =========================
+        #click FREECELL
         if 20 <= y <= 120:
 
             for i in range(4):
@@ -238,9 +233,7 @@ class FreeCell:
                     self.draw()
                     return
 
-            # =========================
-            # CLICK FOUNDATION
-            # =========================
+            #click FOUNDATION
             for i in range(4):
 
                 fx = 500 + i*120
@@ -259,6 +252,8 @@ class FreeCell:
 
                     self.draw()
                     return
+
+        # click TABLEU
 
         col = (x-20)//120
 
@@ -299,6 +294,8 @@ class FreeCell:
 
         self.draw()
 
+
+
     def drag(self,event):
 
         if not self.drag_stack:
@@ -308,6 +305,7 @@ class FreeCell:
         self.drag_y=event.y
 
         self.draw()
+
 
     def drop(self,event):
 
@@ -320,13 +318,14 @@ class FreeCell:
         placed = False
         card = self.drag_stack[0]
 
-        #Drop FREECELL
+        #drop FREECELL
         if 10 <= y <= 140:
 
             for i in range(4):
 
                 fx = 20 + i * 120
 
+                # Allow small margin around slot
                 if fx - 10 <= x <= fx + 90:
 
                     if self.freecells[i] is None and len(self.drag_stack) == 1:
@@ -339,35 +338,36 @@ class FreeCell:
 
                         break
 
-            #drop FOUNDATION
+        #drop FOUNDATION
+        if not placed and 10 <= y <= 140:
+
             for i in range(4):
 
-                fx = 500 + i*120
+                fx = 500 + i * 120
 
-                if fx <= x <= fx+80:
+                if fx - 10 <= x <= fx + 90:
 
                     pile = self.foundations[i]
 
-                    if not pile:
+                    # Empty foundation → must be Ace
+                    if not pile and card.rank == "A":
 
-                        if card.rank == "A":
+                        self.save_state()
+                        pile.append(card)
+                        placed = True
+                        break
 
-                            self.save_state()
-                            pile.append(card)
-                            placed = True
-
-                    else:
+                    # Normal foundation rule
+                    elif pile:
 
                         top = pile[-1]
 
-                        if card.suit == top.suit and rank_value(card.rank) == rank_value(top.rank)+1:
+                        if card.suit == top.suit and rank_value(card.rank) == rank_value(top.rank) + 1:
 
                             self.save_state()
                             pile.append(card)
                             placed = True
-
-                    break
-
+                            break
         #drop TABLEU
         if not placed:
 
@@ -389,7 +389,7 @@ class FreeCell:
 
                     placed = True
 
-        #INVALID
+
         if not placed:
 
             src = self.drag_source
@@ -413,6 +413,7 @@ class FreeCell:
 
         self.draw()
         self.check_win()
+
 
     def valid_move(self,card,target):
 
@@ -443,6 +444,7 @@ class FreeCell:
 
         return True
 
+
     def save_state(self):
 
         state=(
@@ -468,6 +470,7 @@ class FreeCell:
         self.update_moves()
         self.draw()
 
+
     def check_win(self):
 
         total=sum(len(f) for f in self.foundations)
@@ -480,6 +483,7 @@ class FreeCell:
                 fill="yellow",
                 font=("Arial",40)
             )
+
 
     def update_timer(self):
 
@@ -496,10 +500,6 @@ class FreeCell:
 
 
 
-
-
-
-#FIREE
 root=tk.Tk()
 
 game=FreeCell(root)
