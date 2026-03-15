@@ -81,7 +81,6 @@ class FreeCell:
 
         tk.Button(panel,text="New Game",command=self.new_game).pack(side="left")
         tk.Button(panel,text="Undo",command=self.undo).pack(side="left")
-        tk.Button(panel,text="Auto Move",command=self.auto_move).pack(side="left")
 
         self.move_label=tk.Label(panel,text="Moves: 0")
         self.move_label.pack(side="left",padx=20)
