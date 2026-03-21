@@ -91,7 +91,7 @@ class FreeCell:
     # ---------------- GAME SETUP ---------------- #
 
     def new_game(self):
-        deck, seed = create_deck()
+        deck = create_deck()
 
         self.tableau = [[] for _ in range(8)]
         self.freecells = [None] * 4
@@ -111,7 +111,6 @@ class FreeCell:
         self._solving          = False
         self._unlock_input()
 
-        self.root.title(f"FreeCell — Deal #{seed}")
         self.update_moves()
         self.draw()
         self.update_timer()
