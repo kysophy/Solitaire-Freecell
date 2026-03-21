@@ -91,29 +91,27 @@ class FreeCell:
     # ---------------- GAME SETUP ---------------- #
 
     def new_game(self):
-        deck, seed = create_deck()  
+        deck, seed = create_deck()
 
         self.tableau = [[] for _ in range(8)]
         self.freecells = [None] * 4
         self.foundations = [[] for _ in range(4)]
 
-        col = 0
-        while deck:
-            self.tableau[col].append(deck.pop())
-            col = (col + 1) % 8
+        for i, card in enumerate(deck):
+            self.tableau[i % 8].append(card)
 
         self.moves = 0
         self.history = []
         self.start_time = time.time()
 
-        self._solve_actions = []
-        self._solve_cache   = None
-        self._solve_thread  = None
-        self._solve_generation += 1
+        self._solve_actions    = []
+        self._solve_cache      = None
+        self._solve_thread     = None
+        self._solve_generation += 1   
+        self._solving          = False
         self._unlock_input()
 
         self.root.title(f"FreeCell — Deal #{seed}")
-
         self.update_moves()
         self.draw()
         self.update_timer()
@@ -433,7 +431,7 @@ class FreeCell:
         apply_solution([action], self.tableau, self.freecells, self.foundations)
 
     def _on_solve_done(self, enc, actions):
-        self._solving = False
+        self._solving = False               # resume smooth_move
         self.solve_btn.config(state="normal", text="A*")
         if actions is None:
             self._status_msg   = "Could not solve — try New Game"
@@ -450,35 +448,33 @@ class FreeCell:
     def solve_bfs(self): print("BFS")
     def solve_dfs(self): print("DFS")
     def solve_ucs(self): print("UCS")
-    def solve_astar(self): 
-        print("A*")
+    def solve_astar(self):
         if self._solve_thread and self._solve_thread.is_alive():
             return
-
+ 
         enc = self._board_enc()
-
+ 
         if self._solve_cache and self._solve_cache[0] == enc:
-            self._solve_actions = list(self._solve_cache[1])
+            self._solve_actions      = list(self._solve_cache[1])
             self._current_replay_gen = self._solve_generation
             self._lock_input()
             self._replay_next()
             return
 
-        # Show feedback immediately so the user knows it's working
         self._solving = True
         self.solve_btn.config(state="disabled", text="Solving...")
-
+ 
         tab_snap = copy.deepcopy(self.tableau)
         fc_snap  = list(self.freecells)
         fd_snap  = copy.deepcopy(self.foundations)
-
+ 
         def _run():
             actions = run_astar(
                 tab_snap, fc_snap, fd_snap,
-                max_states=2_000_000,   # raise from 500_000
-                timeout_sec=30          # raise from 10
+                max_states=2_000_000,
+                timeout_sec=60
             )
             self.root.after(0, lambda: self._on_solve_done(enc, actions))
-
+ 
         self._solve_thread = threading.Thread(target=_run, daemon=True)
         self._solve_thread.start()
