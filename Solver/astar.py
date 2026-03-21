@@ -121,7 +121,21 @@ def _get_movable_stacks(tab, col_i):
 
     return stacks
 
-def _successors(tab, fc, fd):
+def _is_reverse_move(prev_move, new_move):
+    if prev_move is None:
+        return False
+
+    return (
+        prev_move["from"] == new_move["to"] and
+        prev_move["to"]   == new_move["from"]
+    )
+
+def _try_yield(prev_move, move, new_tab, new_fc, new_fd):
+    if not _is_reverse_move(prev_move, move):
+        return [(move, new_tab, new_fc, new_fd)]
+    return []
+
+def _successors(tab, fc, fd, prev_move=None):
     candidates = []
     for i, card in enumerate(fc):
         if card is not None:
@@ -145,9 +159,13 @@ def _successors(tab, fc, fd):
         # to foundation
         for fi, pile in enumerate(fd):
             if _valid_on_foundation(card, pile) and _is_safe_to_foundation(card, fd):
+                move = {"from": src, "to": ("foundation", fi)}
+
                 new_tab, new_fc, new_fd = _remove_t(tab, fc, fd, src)
                 new_fd = new_fd[:fi] + (new_fd[fi] + (card,),) + new_fd[fi + 1:]
-                yield {"from": src, "to": ("foundation", fi)}, new_tab, new_fc, new_fd
+
+                for item in _try_yield(prev_move, move, new_tab, new_fc, new_fd):
+                    yield item
 
         # to tableau
         for col_i, col in enumerate(tab):
@@ -155,20 +173,29 @@ def _successors(tab, fc, fd):
                 continue
             target = col[-1] if col else None
             if _valid_on_tableau(card, target) and _max_movable(fc, tab, col_i) >= len(moving_cards):
+                move = {"from": src, "to": ("tableau", col_i)}
+
                 new_tab, new_fc, new_fd = _remove_t(tab, fc, fd, src)
-                new_tab = (new_tab[:col_i]
-                            + (new_tab[col_i] + moving_cards,)
-                            + new_tab[col_i + 1:])
-                yield {"from": src, "to": ("tableau", col_i)}, new_tab, new_fc, new_fd
+                new_tab = (
+                    new_tab[:col_i]
+                    + (new_tab[col_i] + moving_cards,)
+                    + new_tab[col_i + 1:]
+                )
+
+                for item in _try_yield(prev_move, move, new_tab, new_fc, new_fd):
+                    yield item
 
         # to freecell (from tableau only; break after first empty slot)
         if src[0] == "tableau" and len(moving_cards) == 1:
             for fi, slot in enumerate(fc):
                 if slot is None:
+                    move = {"from": src, "to": ("freecell", fi)}
+
                     new_tab, new_fc, new_fd = _remove_t(tab, fc, fd, src)
                     new_fc = new_fc[:fi] + (card,) + new_fc[fi + 1:]
-                    yield {"from": src, "to": ("freecell", fi)}, new_tab, new_fc, new_fd
-                    break
+
+                    for item in _try_yield(prev_move, move, new_tab, new_fc, new_fd):
+                        yield item
 
 
 def _reconstruct_path(came_from, goal_enc):
@@ -185,8 +212,6 @@ def _reconstruct_path(came_from, goal_enc):
         flat.extend(auto)
     return flat
 
-def _normalize_tab(tab):
-    return tuple(sorted(tab, key=lambda col: (len(col), tuple(col))))
 
 def solve(tableau, freecells, foundations, max_states=2_000_000, timeout_sec=30):
     import time
@@ -194,7 +219,6 @@ def solve(tableau, freecells, foundations, max_states=2_000_000, timeout_sec=30)
 
     tab, fc, fd = _to_tuple_state(tableau, freecells, foundations)
 
-    tab = _normalize_tab(tab)
     tab, fc, fd, init_auto = _auto_foundation(tab, fc, fd)
 
     start_enc   = _encode(tab, fc, fd)
@@ -208,18 +232,16 @@ def solve(tableau, freecells, foundations, max_states=2_000_000, timeout_sec=30)
     expansions  = 0
 
     while heap:
-        if expansions % 1000 == 0 and time.time() > deadline:
-            print(f"TIMEOUT at {expansions} expansions")
-            return None
-        if expansions >= max_states:
-            print(f"MAX STATES at {expansions}")
-            return None
-        expansions += 1
 
         f, g, _, tab, fc, fd = heapq.heappop(heap)
+        if expansions % 5000 == 0:
+            print(f"Expanded: {expansions}, g={g}, f={f}, heap={len(heap)}")
+
+        if time.time() > deadline:
+            print(f"TIMEOUT at {expansions} expansions")
+            return None
 
         tab, fc, fd, popped_auto = _auto_foundation(tab, fc, fd)
-        tab = _normalize_tab(tab)
         enc = _encode(tab, fc, fd)
 
         # Skip stale heap entries
@@ -231,12 +253,12 @@ def solve(tableau, freecells, foundations, max_states=2_000_000, timeout_sec=30)
             print(f"SOLVED in {expansions} expansions")
             return init_auto + _reconstruct_path(came_from, enc)
 
-        # Expand successors
-        for primary, new_tab, new_fc, new_fd in _successors(tab, fc, fd):
+        prev_move = came_from[enc][1] if enc in came_from else None
+
+        for primary, new_tab, new_fc, new_fd in _successors(tab, fc, fd, prev_move):
             # Run auto_foundation on successor -- result is POST-auto state
             new_tab, new_fc, new_fd, auto = _auto_foundation(new_tab, new_fc, new_fd)
             new_g   = g + 1
-            new_tab = _normalize_tab(new_tab)
             new_enc = _encode(new_tab, new_fc, new_fd)
 
             if new_g < visited.get(new_enc, float('inf')):
