@@ -433,6 +433,8 @@ class FreeCell:
             self._status_msg   = "Could not solve — try New Game"
             self._status_until = time.time() + 3
             return
+        
+        print(f"Total moves: {len(actions)}")
         self._solve_cache        = (enc, list(actions))
         self._solve_actions      = actions
         self._current_replay_gen = self._solve_generation

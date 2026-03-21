@@ -1,14 +1,6 @@
 from Utils.constants import RANK_VALUE, ALL_SUITS, SUIT_COLOR, OPPOSITE_COLOR_SUITS
 
 def _heuristic(tab, fc, fd):
-    """
-    Weighted A* heuristic for FreeCell.
-
-    Admissible base: every card not yet on a foundation needs at least 1 move.
-    On top of that we add a controlled inadmissible bonus (weight W > 1) to
-    guide search toward the goal faster — sacrificing optimal solution length
-    for drastically fewer expansions.
-    """
     W = 3   # weight — increase to solve faster but with longer solutions
 
     in_foundation  = sum(len(pile) for pile in fd)

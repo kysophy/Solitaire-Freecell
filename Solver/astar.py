@@ -215,7 +215,10 @@ def _reconstruct_path(came_from, goal_enc):
 
 def solve(tableau, freecells, foundations, max_states=2_000_000, timeout_sec=30):
     import time
+    import tracemalloc
     deadline = time.time() + timeout_sec
+    start_time = time.time()
+    tracemalloc.start()
 
     tab, fc, fd = _to_tuple_state(tableau, freecells, foundations)
 
@@ -232,13 +235,22 @@ def solve(tableau, freecells, foundations, max_states=2_000_000, timeout_sec=30)
     expansions  = 0
 
     while heap:
+        expansions += 1;
 
         f, g, _, tab, fc, fd = heapq.heappop(heap)
-        if expansions % 5000 == 0:
+        if expansions % 50000 == 0:
             print(f"Expanded: {expansions}, g={g}, f={f}, heap={len(heap)}")
 
         if time.time() > deadline:
+            elapsed = time.time() - start_time
+            print(f"Time: {elapsed:.3f} seconds")
             print(f"TIMEOUT at {expansions} expansions")
+            print(f"States stored: {len(visited)}")
+            current, peak = tracemalloc.get_traced_memory()
+            print(f"Current memory: {current / 10**6:.2f} MB")
+            print(f"Peak memory: {peak / 10**6:.2f} MB")
+
+            tracemalloc.stop()
             return None
 
         tab, fc, fd, popped_auto = _auto_foundation(tab, fc, fd)
@@ -250,7 +262,15 @@ def solve(tableau, freecells, foundations, max_states=2_000_000, timeout_sec=30)
 
         # Goal: all 52 cards home
         if all(len(pile) == 13 for pile in fd):
+            elapsed = time.time() - start_time
+            print(f"Time: {elapsed:.3f} seconds")
             print(f"SOLVED in {expansions} expansions")
+            print(f"States stored: {len(visited)}")
+            current, peak = tracemalloc.get_traced_memory()
+            print(f"Current memory: {current / 10**6:.2f} MB")
+            print(f"Peak memory: {peak / 10**6:.2f} MB")
+
+            tracemalloc.stop()
             return init_auto + _reconstruct_path(came_from, enc)
 
         prev_move = came_from[enc][1] if enc in came_from else None
