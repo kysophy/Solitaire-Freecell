@@ -1,8 +1,13 @@
 import tkinter as tk
 from Game.deck import create_deck
 from Game.utils import color, rank_value
+
+from Utils import _color, _rank_value
+from Solver import solve_astar as run_astar, apply_solution
+
 import time
 import copy
+import threading
 
 class FreeCell:
 
@@ -15,6 +20,10 @@ class FreeCell:
         self.card_images = {}
         self.load_card_images()
 
+        self._solve_thread  = None
+        self._solve_actions = []
+        self._solve_cache   = None
+
         self.moves = 0
         self.history = []
         self.start_time = time.time()
@@ -23,6 +32,12 @@ class FreeCell:
         self.tableau = [[] for _ in range(8)]
         self.freecells = [None] * 4
         self.foundations = [[] for _ in range(4)]
+
+        self._solve_generation = 0
+        self._current_replay_gen  = -1
+        self._status_msg = ""
+        self._status_until = 0
+        self._solving = False
 
         # dragging
         self.drag_stack = []
@@ -58,7 +73,10 @@ class FreeCell:
         tk.Button(panel, text="BFS", command=self.solve_bfs).pack(side="left", padx=5)
         tk.Button(panel, text="DFS", command=self.solve_dfs).pack(side="left", padx=5)
         tk.Button(panel, text="UCS", command=self.solve_ucs).pack(side="left", padx=5)
-        tk.Button(panel, text="A*", command=self.solve_astar).pack(side="left", padx=5)
+
+        #gotta work with my own variable
+        self.solve_btn = tk.Button(panel, text="A*", command=self.solve_astar)
+        self.solve_btn.pack(side="left", padx=5)
 
         self.move_label = tk.Label(panel, text="Moves: 0")
         self.move_label.pack(side="left", padx=20)
@@ -73,8 +91,7 @@ class FreeCell:
     # ---------------- GAME SETUP ---------------- #
 
     def new_game(self):
-
-        deck = create_deck()
+        deck, seed = create_deck()  
 
         self.tableau = [[] for _ in range(8)]
         self.freecells = [None] * 4
@@ -89,8 +106,18 @@ class FreeCell:
         self.history = []
         self.start_time = time.time()
 
+        self._solve_actions = []
+        self._solve_cache   = None
+        self._solve_thread  = None
+        self._solve_generation += 1
+        self._unlock_input()
+
+        self.root.title(f"FreeCell — Deal #{seed}")
+
+        self.update_moves()
         self.draw()
         self.update_timer()
+
 
     # ---------------- DRAW ---------------- #
 
@@ -140,6 +167,14 @@ class FreeCell:
             for card in self.drag_stack:
                 self.draw_card(card,x,y)
                 y += 30
+
+        if self._status_msg and time.time() < self._status_until:
+            self.canvas.create_text(
+                500, 300,
+                text=self._status_msg,
+                fill="red",
+                font=("Arial", 20)
+            )
 
     def draw_card(self, card, x, y):
         img = self.card_images[(card.rank, card.suit)]
@@ -283,6 +318,7 @@ class FreeCell:
         else:
             self.moves += 1
             self.update_moves()
+            self._invalidate_cache()
 
         self.drag_stack = []
         self.drag_source = None
@@ -293,13 +329,12 @@ class FreeCell:
     # ---------------- SMOOTH MOTION ---------------- #
 
     def smooth_move(self):
-
-        if self.drag_stack:
-            speed = 0.3
-            self.drag_x += (self.target_x - self.drag_x) * speed
-            self.drag_y += (self.target_y - self.drag_y) * speed
-
-        self.draw()
+        if not self._solving:
+            if self.drag_stack:
+                speed = 0.3
+                self.drag_x += (self.target_x - self.drag_x) * speed
+                self.drag_y += (self.target_y - self.drag_y) * speed
+            self.draw()
         self.root.after(16, self.smooth_move)
 
     # ---------------- REST SAME ---------------- #
@@ -339,6 +374,7 @@ class FreeCell:
             self.history=[]
             self.moves=0
             self.update_moves()
+            self._invalidate_cache()
             self.draw()
 
     def update_timer(self):
@@ -354,8 +390,95 @@ class FreeCell:
             self.canvas.create_text(500,300,text="YOU WIN!",
                                     fill="yellow",font=("Arial",40))
 
+
+    ############### A* helper functions#####################
+
+    def _board_enc(self):
+        from Solver.astar import _encode, _to_tuple_state
+        tab, fc, fd = _to_tuple_state(self.tableau, self.freecells, self.foundations)
+        return _encode(tab, fc, fd)
+    
+    def _invalidate_cache(self):
+            self._solve_cache = None
+    
+    def _lock_input(self):
+        self.canvas.unbind("<Button-1>")
+        self.canvas.unbind("<B1-Motion>")
+        self.canvas.unbind("<ButtonRelease-1>")
+        self.solve_btn.config(state="disabled")
+ 
+    def _unlock_input(self):
+        self.canvas.bind("<Button-1>",        self.click)
+        self.canvas.bind("<B1-Motion>",       self.drag)
+        self.canvas.bind("<ButtonRelease-1>", self.drop)
+        self.solve_btn.config(state="normal", text="A*")
+ 
+    def _replay_next(self):
+        if self._current_replay_gen != self._solve_generation:
+            return
+    
+        if not self._solve_actions:
+            self._unlock_input()
+            self.check_win()
+            return
+ 
+        action = self._solve_actions.pop(0)
+        self._apply_action(action)
+        self.moves += 1
+        self.update_moves()
+        # Tune replay speed here (milliseconds between moves)
+        self.root.after(350, self._replay_next)
+
+    def _apply_action(self, action):
+        apply_solution([action], self.tableau, self.freecells, self.foundations)
+
+    def _on_solve_done(self, enc, actions):
+        self._solving = False
+        self.solve_btn.config(state="normal", text="A*")
+        if actions is None:
+            self._status_msg   = "Could not solve — try New Game"
+            self._status_until = time.time() + 3
+            return
+        self._solve_cache        = (enc, list(actions))
+        self._solve_actions      = actions
+        self._current_replay_gen = self._solve_generation
+        self._lock_input()
+        self._replay_next()
+
+    #############################
     # placeholders
     def solve_bfs(self): print("BFS")
     def solve_dfs(self): print("DFS")
     def solve_ucs(self): print("UCS")
-    def solve_astar(self): print("A*")
+    def solve_astar(self): 
+        print("A*")
+        if self._solve_thread and self._solve_thread.is_alive():
+            return
+
+        enc = self._board_enc()
+
+        if self._solve_cache and self._solve_cache[0] == enc:
+            self._solve_actions = list(self._solve_cache[1])
+            self._current_replay_gen = self._solve_generation
+            self._lock_input()
+            self._replay_next()
+            return
+
+        # Show feedback immediately so the user knows it's working
+        self._solving = True
+        self.solve_btn.config(state="disabled", text="Solving...")
+
+        tab_snap = copy.deepcopy(self.tableau)
+        fc_snap  = list(self.freecells)
+        fd_snap  = copy.deepcopy(self.foundations)
+
+        def _run():
+            actions = run_astar(
+                tab_snap, fc_snap, fd_snap,
+                max_states=2_000_000,   # raise from 500_000
+                timeout_sec=30          # raise from 10
+            )
+            self.root.after(0, lambda: self._on_solve_done(enc, actions))
+
+        self._solve_thread = threading.Thread(target=_run, daemon=True)
+        self._solve_thread.start()
