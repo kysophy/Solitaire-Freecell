@@ -309,9 +309,6 @@ class FreeCell:
             elif src[0] == "freecell":
                 self.freecells[src[1]] = self.drag_stack[0]
 
-            elif src[0] == "foundation":
-                self.foundations[src[1]].append(self.drag_stack[0])
-
         else:
             self.moves += 1
             self.update_moves()

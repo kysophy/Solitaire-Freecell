@@ -11,6 +11,7 @@ def _to_tuple_state(tableau, freecells, foundations):
 
 
 def _encode(tab, fc, fd):
+    tab = tuple(sorted(tab, key=lambda col: (len(col), col)))
     tab_str = "/".join(
         "|".join(f"{r}{s[0]}" for r, s in col) if col else "-"
         for col in tab
@@ -77,17 +78,48 @@ def _max_movable(fc, tab, target_col=None):
 
 
 def _remove_t(tab, fc, fd, src):
-    kind, idx = src
+    kind = src[0]
+
     if kind == "freecell":
+        idx = src[1]
         return tab, fc[:idx] + (None,) + fc[idx + 1:], fd
+
     if kind == "tableau":
-        new_col = tab[idx][:-1]
-        return tab[:idx] + (new_col,) + tab[idx + 1:], fc, fd
-    if kind == "foundation":
-        new_pile = fd[idx][:-1]
-        return tab, fc, fd[:idx] + (new_pile,) + fd[idx + 1:]
+        if len(src) == 3:
+            _, col_i, start_idx = src
+            new_col = tab[col_i][:start_idx]
+            return tab[:col_i] + (new_col,) + tab[col_i + 1:], fc, fd
+
+        # SINGLE CARD (fallback)
+        else:
+            _, col_i = src
+            new_col = tab[col_i][:-1]
+            return tab[:col_i] + (new_col,) + tab[col_i + 1:], fc, fd
+
     return tab, fc, fd
 
+def _get_movable_stacks(tab, col_i):
+    col = tab[col_i]
+    stacks = []
+
+    for i in range(len(col)):
+        stack = col[i:]
+
+        # check valid descending alternating stack
+        valid = True
+        for j in range(len(stack) - 1):
+            r1, s1 = stack[j]
+            r2, s2 = stack[j + 1]
+
+            if (RANK_VALUE[r1] != RANK_VALUE[r2] + 1 or
+                SUIT_COLOR[s1] == SUIT_COLOR[s2]):
+                valid = False
+                break
+
+        if valid:
+            stacks.append((i, stack))
+
+    return stacks
 
 def _successors(tab, fc, fd):
     candidates = []
@@ -96,13 +128,23 @@ def _successors(tab, fc, fd):
             candidates.append((card, ("freecell", i)))
     for col_i, col in enumerate(tab):
         if col:
-            candidates.append((col[-1], ("tableau", col_i)))
+            stacks = _get_movable_stacks(tab, col_i)
 
-    for card, src in candidates:
+            for start_idx, stack in stacks:
+                candidates.append((stack, ("tableau", col_i, start_idx)))
+
+    for stack, src in candidates:
+
+        if isinstance(stack, tuple) and isinstance(stack[0], tuple):
+            moving_cards = stack
+            card = stack[0]
+        else:
+            moving_cards = (stack,)
+            card = stack
 
         # to foundation
         for fi, pile in enumerate(fd):
-            if _valid_on_foundation(card, pile):
+            if _valid_on_foundation(card, pile) and _is_safe_to_foundation(card, fd):
                 new_tab, new_fc, new_fd = _remove_t(tab, fc, fd, src)
                 new_fd = new_fd[:fi] + (new_fd[fi] + (card,),) + new_fd[fi + 1:]
                 yield {"from": src, "to": ("foundation", fi)}, new_tab, new_fc, new_fd
@@ -112,15 +154,15 @@ def _successors(tab, fc, fd):
             if src[0] == "tableau" and src[1] == col_i:
                 continue
             target = col[-1] if col else None
-            if _valid_on_tableau(card, target) and _max_movable(fc, tab, col_i) >= 1:
+            if _valid_on_tableau(card, target) and _max_movable(fc, tab, col_i) >= len(moving_cards):
                 new_tab, new_fc, new_fd = _remove_t(tab, fc, fd, src)
                 new_tab = (new_tab[:col_i]
-                           + (new_tab[col_i] + (card,),)
-                           + new_tab[col_i + 1:])
+                            + (new_tab[col_i] + moving_cards,)
+                            + new_tab[col_i + 1:])
                 yield {"from": src, "to": ("tableau", col_i)}, new_tab, new_fc, new_fd
 
         # to freecell (from tableau only; break after first empty slot)
-        if src[0] == "tableau":
+        if src[0] == "tableau" and len(moving_cards) == 1:
             for fi, slot in enumerate(fc):
                 if slot is None:
                     new_tab, new_fc, new_fd = _remove_t(tab, fc, fd, src)
@@ -143,12 +185,16 @@ def _reconstruct_path(came_from, goal_enc):
         flat.extend(auto)
     return flat
 
+def _normalize_tab(tab):
+    return tuple(sorted(tab, key=lambda col: (len(col), tuple(col))))
+
 def solve(tableau, freecells, foundations, max_states=2_000_000, timeout_sec=30):
     import time
     deadline = time.time() + timeout_sec
 
     tab, fc, fd = _to_tuple_state(tableau, freecells, foundations)
 
+    tab = _normalize_tab(tab)
     tab, fc, fd, init_auto = _auto_foundation(tab, fc, fd)
 
     start_enc   = _encode(tab, fc, fd)
@@ -173,6 +219,7 @@ def solve(tableau, freecells, foundations, max_states=2_000_000, timeout_sec=30)
         f, g, _, tab, fc, fd = heapq.heappop(heap)
 
         tab, fc, fd, popped_auto = _auto_foundation(tab, fc, fd)
+        tab = _normalize_tab(tab)
         enc = _encode(tab, fc, fd)
 
         # Skip stale heap entries
@@ -189,7 +236,7 @@ def solve(tableau, freecells, foundations, max_states=2_000_000, timeout_sec=30)
             # Run auto_foundation on successor -- result is POST-auto state
             new_tab, new_fc, new_fd, auto = _auto_foundation(new_tab, new_fc, new_fd)
             new_g   = g + 1
-            # Encode POST-auto state -- consistent with all other enc values
+            new_tab = _normalize_tab(new_tab)
             new_enc = _encode(new_tab, new_fc, new_fd)
 
             if new_g < visited.get(new_enc, float('inf')):
@@ -240,27 +287,50 @@ def _move_freecell_to_freecell(freecells, from_slot, to_slot, card):
 
 def apply_solution(actions, tableau, freecells, foundations):
     for action in actions:
-        src_type,  src_idx  = action["from"]
-        dest_type, dest_idx = action["to"]
+        src  = action["from"]
+        dest = action["to"]
+
+        src_type  = src[0]
+        dest_type = dest[0]
+        dest_idx  = dest[1]
 
         if src_type == "tableau":
-            card = _get_top_card_from_tableau(tableau, src_idx)
+            col_idx = src[1]
+            if len(src) == 3:
+                start_idx = src[2]
+                cards = list(tableau[col_idx][start_idx:])
+            else:
+                cards = [tableau[col_idx][-1]]
+
         elif src_type == "freecell":
-            card = _get_top_card_from_freecell(freecells, src_idx)
+            col_idx = src[1]
+            cards = [freecells[col_idx]]
+
         else:
             raise ValueError(f"Unexpected source type: {src_type!r}")
 
-        if   src_type == "tableau"  and dest_type == "freecell":
-            _move_tableau_to_freecell(tableau, freecells, src_idx, dest_idx, card)
-        elif src_type == "tableau"  and dest_type == "foundation":
-            _move_tableau_to_foundation(tableau, foundations, src_idx, dest_idx, card)
-        elif src_type == "tableau"  and dest_type == "tableau":
-            _move_tableau_to_tableau(tableau, src_idx, dest_idx, card)
+        if src_type == "tableau" and dest_type == "freecell":
+            _move_tableau_to_freecell(tableau, freecells, col_idx, dest_idx, cards[0])
+
+        elif src_type == "tableau" and dest_type == "foundation":
+            _move_tableau_to_foundation(tableau, foundations, col_idx, dest_idx, cards[0])
+
+        elif src_type == "tableau" and dest_type == "tableau":
+            if len(cards) == 1:
+                _move_tableau_to_tableau(tableau, col_idx, dest_idx, cards[0])
+            else:
+                # Multi-card stack move
+                del tableau[col_idx][len(tableau[col_idx]) - len(cards):]
+                tableau[dest_idx].extend(cards)
+
         elif src_type == "freecell" and dest_type == "foundation":
-            _move_freecell_to_foundation(freecells, foundations, src_idx, dest_idx, card)
+            _move_freecell_to_foundation(freecells, foundations, col_idx, dest_idx, cards[0])
+
         elif src_type == "freecell" and dest_type == "tableau":
-            _move_freecell_to_tableau(freecells, tableau, src_idx, dest_idx, card)
+            _move_freecell_to_tableau(freecells, tableau, col_idx, dest_idx, cards[0])
+
         elif src_type == "freecell" and dest_type == "freecell":
-            _move_freecell_to_freecell(freecells, src_idx, dest_idx, card)
+            _move_freecell_to_freecell(freecells, col_idx, dest_idx, cards[0])
+
         else:
             raise ValueError(f"Unknown move: {src_type!r} -> {dest_type!r}")
