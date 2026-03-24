@@ -16,7 +16,7 @@ class FreeCell:
         self.root = root
         self.root.title("Group10 - Introduction To AI - FreeCell")
         
-        window_width = 1126
+        window_width = 1155
         window_height = 690
         
         screen_width = self.root.winfo_screenwidth()
@@ -158,35 +158,33 @@ class FreeCell:
                 self.card_images[(rank, suit_name)] = img
 
     def draw(self):
-
         self.canvas.delete("all")
 
-        
-        # inner dark box to act as the specific playing field
-        self.canvas.create_rectangle(10, 10, 980, 680, fill="#1c3b1c", outline="#1c3b1c")
-        
-        # freecells
+        # inner dark box
+        self.canvas.create_rectangle(10, 10, 1010, 680, fill="#1c3b1c", outline="#1c3b1c")
+
+        # freecells tightly grouped on the left (90px spacing)
         for i in range(4):
-            x = 20 + i*120
-            y = 20
-            self.canvas.create_rectangle(x,y,x+80,y+100,outline="white")
+            x = 60 + i * 90
+            y = 30
+            self.canvas.create_rectangle(x, y, x+80, y+100, outline="white")
             if self.freecells[i]:
-                self.draw_card(self.freecells[i],x,y)
+                self.draw_card(self.freecells[i], x, y)
 
-        # foundations
+        # foundations tightly grouped on the right (starts at x=600, 90px spacing)
         for i in range(4):
-            x = 500 + i*120
-            y = 20
-            self.canvas.create_rectangle(x,y,x+80,y+100,outline="white")
+            x = 630 + i * 90
+            y = 30
+            self.canvas.create_rectangle(x, y, x+80, y+100, outline="white")
             if self.foundations[i]:
-                self.draw_card(self.foundations[i][-1],x,y)
+                self.draw_card(self.foundations[i][-1], x, y)
 
-        # tableau
+        # tableau back to normal, evenly spaced across the bottom
         for c in range(8):
-            x = 20 + c*120
-            y = 150
+            x = 60 + c * 120
+            y = 160
             for card in self.tableau[c]:
-                self.draw_card(card,x,y)
+                self.draw_card(card, x, y)
                 y += 30
 
         # dragging stack
@@ -194,16 +192,11 @@ class FreeCell:
             x = self.drag_x
             y = self.drag_y
             for card in self.drag_stack:
-                self.draw_card(card,x,y)
+                self.draw_card(card, x, y)
                 y += 30
 
         if self._status_msg and time.time() < self._status_until:
-            self.canvas.create_text(
-                500, 300,
-                text=self._status_msg,
-                fill="red",
-                font=("Arial", 20)
-            )
+            self.canvas.create_text(520, 340, text=self._status_msg, fill="red", font=("Arial", 20))
 
     def draw_card(self, card, x, y):
         img = self.card_images[(card.rank, card.suit)]
@@ -223,36 +216,36 @@ class FreeCell:
         self.target_y = self.drag_y
 
     def click(self, event):
-
         x, y = event.x, event.y
 
-        # freecell
-        if 20 <= y <= 120:
+        # top row: freecells and foundations
+        if 30 <= y <= 130:
+            # check freecells (left side)
             for i in range(4):
-                fx = 20 + i*120
-                if fx <= x <= fx+80 and self.freecells[i]:
+                fx = 60 + i * 90
+                if fx <= x <= fx + 80 and self.freecells[i]:
                     card = self.freecells[i]
                     self.freecells[i] = None
                     self.start_drag([card], ("freecell", i), x, y)
                     return
 
-            # foundation
+            # check foundations (right side)
             for i in range(4):
-                fx = 500 + i*120
-                if fx <= x <= fx+80 and self.foundations[i]:
+                fx = 630 + i * 90
+                if fx <= x <= fx + 80 and self.foundations[i]:
                     card = self.foundations[i].pop()
                     self.start_drag([card], ("foundation", i), x, y)
                     return
 
-        # tableau
-        col = (x-20)//120
+        # tableau (normal even spacing)
+        col = (x - 60) // 120
         if not (0 <= col < 8):
             return
 
-        y_pos = 150
+        y_pos = 160
         index = None
         for i in range(len(self.tableau[col])):
-            if y_pos <= y <= y_pos+100:
+            if y_pos <= y <= y_pos + 100:
                 index = i
             y_pos += 30
 
@@ -277,20 +270,19 @@ class FreeCell:
         self.target_y = event.y - self.drag_offset_y
         
     def drop(self, event):
-
         if not self.drag_stack:
             return
 
         x = event.x
         y = event.y
-
         placed = False
         card = self.drag_stack[0]
 
-        # FREECELL
-        if 10 <= y <= 140:
+        # TOP ROW: FREECELL & FOUNDATION
+        if 20 <= y <= 150: 
+            # freecell drop zones
             for i in range(4):
-                fx = 20 + i * 120
+                fx = 60 + i * 90
                 if fx - 10 <= x <= fx + 90:
                     if self.freecells[i] is None and len(self.drag_stack) == 1:
                         self.save_state()
@@ -298,30 +290,28 @@ class FreeCell:
                         placed = True
                         break
 
-        # FOUNDATION
-        if not placed and 10 <= y <= 140:
-            for i in range(4):
-                fx = 500 + i * 120
-                if fx - 10 <= x <= fx + 90:
-                    pile = self.foundations[i]
-
-                    if not pile and card.rank == "A":
-                        self.save_state()
-                        pile.append(card)
-                        placed = True
-                        break
-
-                    elif pile:
-                        top = pile[-1]
-                        if card.suit == top.suit and rank_value(card.rank) == rank_value(top.rank) + 1:
+            # foundation drop zones
+            if not placed:
+                for i in range(4):
+                    fx = 630 + i * 90
+                    if fx - 10 <= x <= fx + 90:
+                        pile = self.foundations[i]
+                        if not pile and card.rank == "A":
                             self.save_state()
                             pile.append(card)
                             placed = True
                             break
+                        elif pile:
+                            top = pile[-1]
+                            if card.suit == top.suit and rank_value(card.rank) == rank_value(top.rank) + 1:
+                                self.save_state()
+                                pile.append(card)
+                                placed = True
+                                break
 
         # TABLEAU
         if not placed:
-            col = (x - 20) // 120
+            col = (x - 50) // 120 
             if 0 <= col < 8:
                 target = self.tableau[col][-1] if self.tableau[col] else None
                 max_cards = self.max_movable_cards(col)
@@ -334,13 +324,10 @@ class FreeCell:
         # RETURN if invalid
         if not placed:
             src = self.drag_source
-
             if src[0] == "tableau":
                 self.tableau[src[1]][src[2]:src[2]] = self.drag_stack
-
             elif src[0] == "freecell":
                 self.freecells[src[1]] = self.drag_stack[0]
-
         else:
             self.moves += 1
             self.update_moves()
