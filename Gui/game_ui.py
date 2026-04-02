@@ -78,12 +78,16 @@ class FreeCell:
         btn_opts = {"width": 15, "pady": 5}
         lbl_opts = {"bg": panel_bg, "fg": "white", "font": ("Arial", 10, "bold")}
 
+        tk.Label(control_panel, text="", bg=panel_bg).pack(pady=0.5)
+        tk.Label(control_panel, text="Controls", **lbl_opts).pack(pady=1)
         tk.Button(control_panel, text="New Game", command=self.new_game, **btn_opts).pack(pady=5)
         tk.Button(control_panel, text="Reset", command=self.reset_game, **btn_opts).pack(pady=5)
         tk.Button(control_panel, text="Undo", command=self.undo_move, **btn_opts).pack(pady=5)
 
         tk.Label(control_panel, text="", bg=panel_bg).pack(pady=10)
         
+        tk.Label(control_panel, text="", bg=panel_bg).pack(pady=0.5)
+        tk.Label(control_panel, text="Solvers", **lbl_opts).pack(pady=1)
         self.bfs_btn = tk.Button(control_panel, text="BFS", command=self.solve_bfs, **btn_opts)
         self.bfs_btn.pack(pady=5)
 
