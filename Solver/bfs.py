@@ -243,7 +243,7 @@ def solve(tableau, freecells, foundations, beam_width=500, max_states=2_000_000,
                 print(f"Search Length: N/A")
                 print("---------------------------\n")
                 tracemalloc.stop()
-                return None
+                return None, expansions
 
             enc = _encode(current_tab, current_fc, current_fd)
 

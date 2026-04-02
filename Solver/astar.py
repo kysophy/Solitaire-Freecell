@@ -292,7 +292,7 @@ def solve(tableau, freecells, foundations, max_states=2_000_000, timeout_sec=30)
     print(f"Search Length: N/A")
     print("------------------\n")
     tracemalloc.stop()
-    return None
+    return None, expansions
 
 def _move_tableau_to_freecell(tableau, freecells, col_index, slot_index, card):
     tableau[col_index].pop()
