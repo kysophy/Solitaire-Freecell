@@ -56,6 +56,10 @@ class FreeCell:
 
         self.drag_offset_x = 40
         self.drag_offset_y = 50
+        
+        self.is_reverting = False
+        self.is_replaying_anim = False
+        self.current_replay_action = None
 
         self.build_gui()
         self.new_game()
@@ -138,6 +142,8 @@ class FreeCell:
         self._solve_thread = None
         self._solve_generation += 1   
         self._solving = False
+        self.is_replaying_anim = False
+        self.drag_stack = []
         self._unlock_input()
 
         self.update_moves()
@@ -154,7 +160,9 @@ class FreeCell:
         self.moves = 0
         
         self._solve_actions = [] 
-        self._solve_generation += 1 
+        self._solve_generation += 1
+        self.is_replaying_anim = False
+        self.drag_stack = []
         self._unlock_input()
         
         self.update_moves()
@@ -246,10 +254,13 @@ class FreeCell:
     def start_drag(self, stack, source, x, y):
         self.drag_stack = stack
         self.drag_source = source
-        self.drag_x = x - self.drag_offset_x
-        self.drag_y = y - self.drag_offset_y
+        self.start_x = x - self.drag_offset_x
+        self.start_y = y - self.drag_offset_y
+        self.drag_x = self.start_x
+        self.drag_y = self.start_y
         self.target_x = self.drag_x
         self.target_y = self.drag_y
+        self.is_reverting = False
 
     def click(self, event):
         x, y = event.x, event.y
@@ -297,6 +308,7 @@ class FreeCell:
     def drag(self, event):
         if not self.drag_stack:
             return
+
         self.target_x = event.x - self.drag_offset_x
         self.target_y = event.y - self.drag_offset_y
         
@@ -349,28 +361,63 @@ class FreeCell:
                     placed = True
 
         if not placed:
-            src = self.drag_source
-            if src[0] == "tableau":
-                self.tableau[src[1]][src[2]:src[2]] = self.drag_stack
-            elif src[0] == "freecell":
-                self.freecells[src[1]] = self.drag_stack[0]
+            self.is_reverting = True
+            self.target_x = self.start_x
+            self.target_y = self.start_y
         else:
             self.moves += 1
             self.update_moves()
             self._invalidate_cache()
 
-        self.drag_stack = []
-        self.drag_source = None
-        self.draw()
-        self.check_win()
+            self.drag_stack = []
+            self.drag_source = None
+            self.draw()
+            self.check_win()
 
     def smooth_move(self):
-        if not self._solving:
-            if self.drag_stack:
-                speed = 0.3
-                self.drag_x += (self.target_x - self.drag_x) * speed
-                self.drag_y += (self.target_y - self.drag_y) * speed
+        if self.drag_stack:
+            speed = 0.35
+            dx = self.target_x - self.drag_x
+            dy = self.target_y - self.drag_y
+            
+            self.drag_x += dx * speed
+            self.drag_y += dy * speed
+            
+            # --- AI REPLAY ANIMATION ---
+            if self.is_replaying_anim:
+                if abs(dx) < 2 and abs(dy) < 2:
+                    dest = self.current_replay_action["to"]
+                    dest_type, dest_idx = dest[0], dest[1]
+
+                    if dest_type == "tableau":
+                        self.tableau[dest_idx].extend(self.drag_stack)
+                    elif dest_type == "freecell":
+                        self.freecells[dest_idx] = self.drag_stack[0]
+                    elif dest_type == "foundation":
+                        self.foundations[dest_idx].append(self.drag_stack[0])
+                    
+                    self.drag_stack = []
+                    self.is_replaying_anim = False
+                    self.moves += 1
+                    self.update_moves()
+
+                    self.root.after(130, self._replay_next)
+
+            # --- PLAYER INVALID MOVE FLY-BACK ---
+            elif self.is_reverting:
+                if abs(dx) < 2 and abs(dy) < 2:
+                    src = self.drag_source
+                    if src[0] == "tableau":
+                        self.tableau[src[1]][src[2]:src[2]] = self.drag_stack
+                    elif src[0] == "freecell":
+                        self.freecells[src[1]] = self.drag_stack[0]
+                    
+                    self.drag_stack = []
+                    self.drag_source = None
+                    self.is_reverting = False
+                    
             self.draw()
+            
         self.root.after(16, self.smooth_move)
 
     # --- Rules & Validation ---
@@ -419,6 +466,41 @@ class FreeCell:
         self.canvas.bind("<ButtonRelease-1>", self.drop)
         self.solve_btn.config(state="normal", text="A*")
  
+    def _get_coords(self, loc, is_dest=False):
+        ltype = loc[0]
+        idx = loc[1]
+        
+        if ltype == "freecell":
+            return 60 + idx * 90, 30
+        elif ltype == "foundation":
+            return 630 + idx * 90, 30
+        elif ltype == "tableau":
+            col = self.tableau[idx]
+            offset = len(col)
+            if not is_dest:
+                offset = loc[2] if len(loc) == 3 else len(col) - 1
+            return 60 + idx * 120, 160 + offset * 30
+
+    def _setup_replay_animation(self, action):
+        src = action["from"]
+        dest = action["to"]
+
+        self.drag_x, self.drag_y = self._get_coords(src, is_dest=False)
+        
+        src_type, src_idx = src[0], src[1]
+        if src_type == "tableau":
+            start_idx = src[2] if len(src) == 3 else len(self.tableau[src_idx]) - 1
+            self.drag_stack = self.tableau[src_idx][start_idx:]
+            del self.tableau[src_idx][start_idx:]
+        elif src_type == "freecell":
+            self.drag_stack = [self.freecells[src_idx]]
+            self.freecells[src_idx] = None
+        
+        self.target_x, self.target_y = self._get_coords(dest, is_dest=True)
+        
+        self.current_replay_action = action
+        self.is_replaying_anim = True
+
     def _replay_next(self):
         if self._current_replay_gen != self._solve_generation:
             return
@@ -429,13 +511,7 @@ class FreeCell:
             return
  
         action = self._solve_actions.pop(0)
-        self._apply_action(action)
-        self.moves += 1
-        self.update_moves()
-        self.root.after(350, self._replay_next)
-
-    def _apply_action(self, action):
-        apply_solution([action], self.tableau, self.freecells, self.foundations)
+        self._setup_replay_animation(action)
 
     def _on_solve_done(self, enc, actions):
         self._solving = False
