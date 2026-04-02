@@ -1,0 +1,7 @@
+Solver,Mode,Solved,Search Time,Memory Usage,Expanded Nodes,Solution Length
+A*,Hard,Yes,0.1742,0.5009,59,81
+DFS,Hard,No,600.0001,10.6812,346659,0
+A*,Expert,Yes,40.8727,44.5587,36743,102
+DFS,Easy,Yes,0.0130,0.0044,4,54
+DFS,Medium,Yes,0.0358,0.0057,15,54
+DFS,Medium,Yes,27.8741,0.6185,12475,57
