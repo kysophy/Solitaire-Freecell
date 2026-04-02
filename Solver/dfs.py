@@ -91,7 +91,7 @@ def _translate_to_user_format(friend_moves, tableau, freecells):
 
     return translated
 
-def solve(tableau, freecells, foundations, maxDepth=300, timeoutSec=600):
+def solve(tableau, freecells, foundations, maxDepth=300, timeoutSec=120):
     startTime = time.time()
     tracemalloc.start()
 

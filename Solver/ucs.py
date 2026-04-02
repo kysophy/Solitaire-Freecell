@@ -275,7 +275,7 @@ def _preview_score(tab, fc, fd, g):
     empty_cols = sum(1 for col in tab if len(col) == 0)
     return (foundation_cards, empty_cols, empty_fc, -g)
 
-def solve(tableau, freecells, foundations, max_states=5_000_000, timeout_sec=600):
+def solve(tableau, freecells, foundations, max_states=5_000_000, timeout_sec=120):
     start_time = time.perf_counter()
     deadline = start_time + timeout_sec
     tracemalloc.start()

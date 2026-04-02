@@ -574,7 +574,7 @@ class FreeCell:
             actions = run_bfs(
                 tab_snap, fc_snap, fd_snap,
                 max_states=2_000_000,
-                timeout_sec=60
+                timeout_sec=120
             )
             self.root.after(0, lambda: self._on_solve_done(enc, actions))
  
@@ -605,7 +605,7 @@ class FreeCell:
             actions = run_dfs(
                 tabSnap, fcSnap, fdSnap,
                 maxDepth=300,
-                timeoutSec=600
+                timeoutSec=120
             )
             self.root.after(0, lambda: self._on_solve_done(enc, actions))
  
@@ -636,7 +636,7 @@ class FreeCell:
             actions = run_ucs(
                 tabSnap, fcSnap, fdSnap,
                 max_states=5_000_000,
-                timeout_sec=600
+                timeout_sec=120
             )
             self.root.after(0, lambda: self._on_solve_done(enc, actions))
  
@@ -667,7 +667,7 @@ class FreeCell:
             actions = run_astar(
                 tab_snap, fc_snap, fd_snap,
                 max_states=2_000_000,
-                timeout_sec=60
+                timeout_sec=120
             )
             self.root.after(0, lambda: self._on_solve_done(enc, actions))
  

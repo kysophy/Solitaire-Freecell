@@ -207,7 +207,7 @@ def _reconstruct_path(came_from, goal_enc):
         
     return flat
 
-def solve(tableau, freecells, foundations, beam_width=500, max_states=2_000_000, timeout_sec=60):
+def solve(tableau, freecells, foundations, beam_width=500, max_states=2_000_000, timeout_sec=120):
     deadline = time.time() + timeout_sec
     start_time = time.time()
     tracemalloc.start()
