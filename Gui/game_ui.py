@@ -237,6 +237,16 @@ class FreeCell:
             y = 160
             for card in self.tableau[c]:
                 self.draw_card(card, x, y)
+                
+                if i > 0:
+                    self.canvas.create_line(
+                        x + 0.5, y + 1,   # Left corner dips down
+                        x + 3, y,       # Curves up to the flat top edge
+                        x + 76, y,      # Runs flat across the middle
+                        x + 77.5, y + 1,  # Right corner dips down
+                        fill="#888888", width=1, smooth=True
+                    )
+                    
                 y += 30
 
         if self.drag_stack:
