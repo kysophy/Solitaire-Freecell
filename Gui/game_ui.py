@@ -5,9 +5,10 @@ import threading
 
 from Game.deck import create_deck
 from Game.utils import color, rank_value
-from Solver import solve_astar as run_astar, apply_solution
+from Solver import solve_astar as run_astar
 from Solver.bfs import solve as run_bfs
 from Solver.dfs import solve as run_dfs
+from Solver.ucs import solve as run_ucs
 
 class FreeCell:
 
@@ -89,12 +90,16 @@ class FreeCell:
         
         tk.Label(control_panel, text="", bg=panel_bg).pack(pady=0.5)
         tk.Label(control_panel, text="Solvers", **lbl_opts).pack(pady=1)
+        
         self.bfs_btn = tk.Button(control_panel, text="BFS", command=self.solve_bfs, **btn_opts)
         self.bfs_btn.pack(pady=5)
 
-        tk.Button(control_panel, text="DFS", command=self.solve_dfs, **btn_opts).pack(pady=5)
-        tk.Button(control_panel, text="UCS", command=self.solve_ucs, **btn_opts).pack(pady=5)
+        self.dfs_btn = tk.Button(control_panel, text="DFS", command=self.solve_dfs, **btn_opts)
+        self.dfs_btn.pack(pady=5)
         
+        self.ucs_btn = tk.Button(control_panel, text="UCS", command=self.solve_ucs, **btn_opts)
+        self.ucs_btn.pack(pady=5)
+
         self.solve_btn = tk.Button(control_panel, text="A*", command=self.solve_astar, **btn_opts)
         self.solve_btn.pack(pady=5)
         
@@ -590,6 +595,7 @@ class FreeCell:
             return
 
         self._solving = True
+        self.dfs_btn.config(state="disabled", text="Solving...")
  
         tabSnap = copy.deepcopy(self.tableau)
         fcSnap = list(self.freecells)
@@ -607,7 +613,35 @@ class FreeCell:
         self._solve_thread.start()
 
     def solve_ucs(self):
-        print("UCS")
+        if self._solve_thread and self._solve_thread.is_alive():
+            return
+ 
+        enc = self._board_enc()
+ 
+        if self._solve_cache and self._solve_cache[0] == enc:
+            self._solve_actions = list(self._solve_cache[1])
+            self._current_replay_gen = self._solve_generation
+            self._lock_input()
+            self._replay_next()
+            return
+
+        self._solving = True
+        self.ucs_btn.config(state="disabled", text="Solving...")
+ 
+        tabSnap = copy.deepcopy(self.tableau)
+        fcSnap = list(self.freecells)
+        fdSnap = copy.deepcopy(self.foundations)
+ 
+        def _run():
+            actions = run_ucs(
+                tabSnap, fcSnap, fdSnap,
+                max_states=5_000_000,
+                timeout_sec=600
+            )
+            self.root.after(0, lambda: self._on_solve_done(enc, actions))
+ 
+        self._solve_thread = threading.Thread(target=_run, daemon=True)
+        self._solve_thread.start()
     
     def solve_astar(self):
         if self._solve_thread and self._solve_thread.is_alive():
