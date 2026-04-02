@@ -7,6 +7,7 @@ from Game.deck import create_deck
 from Game.utils import color, rank_value
 from Solver import solve_astar as run_astar, apply_solution
 from Solver.bfs import solve as run_bfs
+from Solver.dfs import solve as run_dfs
 
 class FreeCell:
 
@@ -576,7 +577,34 @@ class FreeCell:
         self._solve_thread.start()
         
     def solve_dfs(self):
-        print("DFS")
+        if self._solve_thread and self._solve_thread.is_alive():
+            return
+ 
+        enc = self._board_enc()
+ 
+        if self._solve_cache and self._solve_cache[0] == enc:
+            self._solve_actions = list(self._solve_cache[1])
+            self._current_replay_gen = self._solve_generation
+            self._lock_input()
+            self._replay_next()
+            return
+
+        self._solving = True
+ 
+        tabSnap = copy.deepcopy(self.tableau)
+        fcSnap = list(self.freecells)
+        fdSnap = copy.deepcopy(self.foundations)
+ 
+        def _run():
+            actions = run_dfs(
+                tabSnap, fcSnap, fdSnap,
+                maxDepth=300,
+                timeoutSec=600
+            )
+            self.root.after(0, lambda: self._on_solve_done(enc, actions))
+ 
+        self._solve_thread = threading.Thread(target=_run, daemon=True)
+        self._solve_thread.start()
 
     def solve_ucs(self):
         print("UCS")
