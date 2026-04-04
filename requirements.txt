@@ -1,0 +1,8 @@
+No external third-party libraries are required for this project.
+
+The entire FreeCell solver and graphical interface were built using Python built-in Standard Library modules:
+
+- tkinter (GUI)
+- time, tracemalloc (Benchmarking)
+- heapq (A* and UCS Priority Queues)
+- threading, copy, random, sys, os

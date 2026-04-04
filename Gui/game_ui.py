@@ -44,9 +44,10 @@ class FreeCell:
 
         self._solve_generation = 0
         self._current_replay_gen = -1
-        self._status_msg = ""
-        self._status_until = 0
         self._solving = False
+        
+        self.display_message = ""
+        self.message_timeout = 0
 
         self.drag_stack = []
         self.drag_source = None
@@ -82,9 +83,15 @@ class FreeCell:
 
         tk.Label(control_panel, text="", bg=panel_bg).pack(pady=0.5)
         tk.Label(control_panel, text="Controls", **lbl_opts).pack(pady=1)
-        tk.Button(control_panel, text="New Game", command=self.new_game, **btn_opts).pack(pady=5)
-        tk.Button(control_panel, text="Reset", command=self.reset_game, **btn_opts).pack(pady=5)
-        tk.Button(control_panel, text="Undo", command=self.undo_move, **btn_opts).pack(pady=5)
+        
+        self.new_game_btn = tk.Button(control_panel, text="New Game", command=self.new_game, **btn_opts)
+        self.new_game_btn.pack(pady=5)
+        
+        self.reset_btn = tk.Button(control_panel, text="Reset", command=self.reset_game, **btn_opts)
+        self.reset_btn.pack(pady=5)
+        
+        self.undo_btn = tk.Button(control_panel, text="Undo", command=self.undo_move, **btn_opts)
+        self.undo_btn.pack(pady=5)
 
         tk.Label(control_panel, text="", bg=panel_bg).pack(pady=10)
         
@@ -117,17 +124,16 @@ class FreeCell:
         self.seed_input = tk.Entry(control_panel, width=15)
         self.seed_input.pack(pady=5)
 
-        self.canvas.bind("<Button-1>", self.click)
-        self.canvas.bind("<B1-Motion>", self.drag)
-        self.canvas.bind("<ButtonRelease-1>", self.drop)
-
     # --- Game State Management ---
 
     def new_game(self):
-        from testing.testCases import createDeckFromSeed
+        try:
+            from testing.testCases import createDeckFromSeed
+        except ImportError:
+            createDeckFromSeed = None
         
         seed_str = self.seed_input.get()
-        if seed_str.isdigit():
+        if seed_str.isdigit() and createDeckFromSeed:
             deck = createDeckFromSeed(int(seed_str))
         else:
             deck = create_deck()
@@ -154,7 +160,10 @@ class FreeCell:
         self._solving = False
         self.is_replaying_anim = False
         self.drag_stack = []
-        self._unlock_input()
+        
+        self.display_message = ""
+        self.message_timeout = 0
+        self._unlock_ui()
 
         self.update_moves()
         self.draw()
@@ -173,7 +182,10 @@ class FreeCell:
         self._solve_generation += 1
         self.is_replaying_anim = False
         self.drag_stack = []
-        self._unlock_input()
+        
+        self.display_message = ""
+        self.message_timeout = 0
+        self._unlock_ui()
         
         self.update_moves()
         self._invalidate_cache()
@@ -198,7 +210,10 @@ class FreeCell:
 
     def check_win(self):
         if sum(len(f) for f in self.foundations) == 52:
-            self.canvas.create_text(500, 300, text="YOU WIN!", fill="yellow", font=("Arial", 40))
+            self.display_message = "YOU WIN!"
+            self.message_timeout = 0
+            self._lock_ui(keep_new_game=True)  # Lock everything EXCEPT new game
+            self.draw()
 
     def update_timer(self):
         elapsed = int(time.time() - self.start_time)
@@ -217,8 +232,11 @@ class FreeCell:
         for suit_name, suit_letter in suits.items():
             for rank in ranks:
                 filename = f"Assets/cards/{rank}{suit_letter}.png"
-                img = tk.PhotoImage(file=filename).subsample(3, 3)
-                self.card_images[(rank, suit_name)] = img
+                try:
+                    img = tk.PhotoImage(file=filename).subsample(3, 3)
+                    self.card_images[(rank, suit_name)] = img
+                except Exception as e:
+                    print(f"Error loading {filename}: {e}")
 
     def draw(self):
         self.canvas.delete("all")
@@ -241,15 +259,15 @@ class FreeCell:
         for c in range(8):
             x = 60 + c * 120
             y = 160
-            for card in self.tableau[c]:
+            for i, card in enumerate(self.tableau[c]):
                 self.draw_card(card, x, y)
                 
                 if i > 0:
                     self.canvas.create_line(
-                        x + 0.5, y + 1,   # Left corner dips down
-                        x + 3, y,       # Curves up to the flat top edge
-                        x + 76, y,      # Runs flat across the middle
-                        x + 77.5, y + 1,  # Right corner dips down
+                        x + 0.5, y + 1,
+                        x + 3, y, 
+                        x + 76, y, 
+                        x + 77.5, y + 1,
                         fill="#888888", width=1, smooth=True
                     )
                     
@@ -262,12 +280,38 @@ class FreeCell:
                 self.draw_card(card, x, y)
                 y += 30
 
-        if self._status_msg and time.time() < self._status_until:
-            self.canvas.create_text(520, 340, text=self._status_msg, fill="red", font=("Arial", 20))
+        # Draw Messages Overlay
+        msg = ""
+        if self.display_message:
+            if self.message_timeout == 0 or time.time() < self.message_timeout:
+                msg = self.display_message
+            else:
+                self.display_message = ""
+
+        if msg:
+            text_id = self.canvas.create_text(
+                510, 340, 
+                text=msg, 
+                fill="yellow", 
+                font=("Arial", 36, "bold italic"), 
+                justify="center"
+            )
+            bbox = self.canvas.bbox(text_id)
+            if bbox:
+                pad_x = 20
+                pad_y = 10
+                # Using stipple="gray50" to create the 50% transparent greyish background
+                rect_id = self.canvas.create_rectangle(
+                    bbox[0]-pad_x, bbox[1]-pad_y, 
+                    bbox[2]+pad_x, bbox[3]+pad_y, 
+                    fill="#333333", stipple="gray50", outline=""
+                )
+                self.canvas.tag_lower(rect_id, text_id)
 
     def draw_card(self, card, x, y):
-        img = self.card_images[(card.rank, card.suit)]
-        self.canvas.create_image(x, y, image=img, anchor="nw")
+        if (card.rank, card.suit) in self.card_images:
+            img = self.card_images[(card.rank, card.suit)]
+            self.canvas.create_image(x, y, image=img, anchor="nw")
 
     # --- Interaction ---
 
@@ -431,6 +475,8 @@ class FreeCell:
                         self.tableau[src[1]][src[2]:src[2]] = self.drag_stack
                     elif src[0] == "freecell":
                         self.freecells[src[1]] = self.drag_stack[0]
+                    elif src[0] == "foundation":
+                        self.foundations[src[1]].append(self.drag_stack[0])
                     
                     self.drag_stack = []
                     self.drag_source = None
@@ -464,27 +510,53 @@ class FreeCell:
                 return False
         return True
 
-    # --- AI Solvers ---
-
-    def _board_enc(self):
-        from Solver.astar import _encode, _to_tuple_state
-        tab, fc, fd = _to_tuple_state(self.tableau, self.freecells, self.foundations)
-        return _encode(tab, fc, fd)
+    # --- UI Lock Management ---
     
-    def _invalidate_cache(self):
-        self._solve_cache = None
-    
-    def _lock_input(self):
+    def _lock_ui(self, keep_new_game=True):
+        """Disables board interaction and all side panel buttons to prevent conflicts."""
         self.canvas.unbind("<Button-1>")
         self.canvas.unbind("<B1-Motion>")
         self.canvas.unbind("<ButtonRelease-1>")
+        
+        self.reset_btn.config(state="disabled")
+        self.undo_btn.config(state="disabled")
+        self.bfs_btn.config(state="disabled")
+        self.dfs_btn.config(state="disabled")
+        self.ucs_btn.config(state="disabled")
         self.solve_btn.config(state="disabled")
- 
-    def _unlock_input(self):
+        
+        if keep_new_game:
+            self.new_game_btn.config(state="normal")
+        else:
+            self.new_game_btn.config(state="disabled")
+
+    def _unlock_ui(self):
+        """Restores board interaction and all buttons."""
         self.canvas.bind("<Button-1>", self.click)
         self.canvas.bind("<B1-Motion>", self.drag)
         self.canvas.bind("<ButtonRelease-1>", self.drop)
+        
+        self.new_game_btn.config(state="normal")
+        self.reset_btn.config(state="normal")
+        self.undo_btn.config(state="normal")
+        
+        self.bfs_btn.config(state="normal", text="BFS")
+        self.dfs_btn.config(state="normal", text="DFS")
+        self.ucs_btn.config(state="normal", text="UCS")
         self.solve_btn.config(state="normal", text="A*")
+
+    # --- AI Solvers ---
+
+    def _board_enc(self):
+        try:
+            from Solver.astar import _encode, _to_tuple_state
+            tab, fc, fd = _to_tuple_state(self.tableau, self.freecells, self.foundations)
+            return _encode(tab, fc, fd)
+        except ImportError:
+            return str(self.tableau) + str(self.freecells)
+    
+    def _invalidate_cache(self):
+        self._solve_cache = None
  
     def _get_coords(self, loc, is_dest=False):
         ltype = loc[0]
@@ -526,28 +598,34 @@ class FreeCell:
             return
     
         if not self._solve_actions:
-            self._unlock_input()
+            self._unlock_ui()
             self.check_win()
             return
  
         action = self._solve_actions.pop(0)
         self._setup_replay_animation(action)
 
-    def _on_solve_done(self, enc, actions):
+    def _on_solve_done(self, enc, actions, gen):
+        if gen != self._solve_generation:
+            # Player clicked New Game or Reset while the solver was running
+            return
+
         self._solving = False
-        self.solve_btn.config(state="normal", text="A*")
-        self.bfs_btn.config(state="normal", text="BFS")
+        self.display_message = ""
 
         if actions is None:
-            self._status_msg = "Could not solve — try New Game"
-            self._status_until = time.time() + 3
+            self.display_message = "Could not solve — try New Game"
+            self.message_timeout = time.time() + 3
+            self._unlock_ui()
+            self.draw()
             return
 
         print(f"Total moves: {len(actions)}")
         self._solve_cache = (enc, list(actions))
         self._solve_actions = actions
         self._current_replay_gen = self._solve_generation
-        self._lock_input()
+        
+        # UI remains locked for replay
         self._replay_next()
         
     def solve_bfs(self):
@@ -559,16 +637,21 @@ class FreeCell:
         if self._solve_cache and self._solve_cache[0] == enc:
             self._solve_actions = list(self._solve_cache[1])
             self._current_replay_gen = self._solve_generation
-            self._lock_input()
+            self._lock_ui()
             self._replay_next()
             return
 
         self._solving = True
-        self.bfs_btn.config(state="disabled", text="Solving...")
+        self.bfs_btn.config(text="Solving...")
+        self.display_message = "Solving with BFS..."
+        self.message_timeout = 0
+        self._lock_ui()
+        self.draw()
  
         tab_snap = copy.deepcopy(self.tableau)
         fc_snap = list(self.freecells)
         fd_snap = copy.deepcopy(self.foundations)
+        gen = self._solve_generation
  
         def _run():
             actions = run_bfs(
@@ -576,7 +659,7 @@ class FreeCell:
                 max_states=2_000_000,
                 timeout_sec=120
             )
-            self.root.after(0, lambda: self._on_solve_done(enc, actions))
+            self.root.after(0, lambda: self._on_solve_done(enc, actions, gen))
  
         self._solve_thread = threading.Thread(target=_run, daemon=True)
         self._solve_thread.start()
@@ -590,16 +673,21 @@ class FreeCell:
         if self._solve_cache and self._solve_cache[0] == enc:
             self._solve_actions = list(self._solve_cache[1])
             self._current_replay_gen = self._solve_generation
-            self._lock_input()
+            self._lock_ui()
             self._replay_next()
             return
 
         self._solving = True
-        self.dfs_btn.config(state="disabled", text="Solving...")
+        self.dfs_btn.config(text="Solving...")
+        self.display_message = "Solving with DFS..."
+        self.message_timeout = 0
+        self._lock_ui()
+        self.draw()
  
         tabSnap = copy.deepcopy(self.tableau)
         fcSnap = list(self.freecells)
         fdSnap = copy.deepcopy(self.foundations)
+        gen = self._solve_generation
  
         def _run():
             actions = run_dfs(
@@ -607,7 +695,7 @@ class FreeCell:
                 maxDepth=300,
                 timeoutSec=120
             )
-            self.root.after(0, lambda: self._on_solve_done(enc, actions))
+            self.root.after(0, lambda: self._on_solve_done(enc, actions, gen))
  
         self._solve_thread = threading.Thread(target=_run, daemon=True)
         self._solve_thread.start()
@@ -621,16 +709,21 @@ class FreeCell:
         if self._solve_cache and self._solve_cache[0] == enc:
             self._solve_actions = list(self._solve_cache[1])
             self._current_replay_gen = self._solve_generation
-            self._lock_input()
+            self._lock_ui()
             self._replay_next()
             return
 
         self._solving = True
-        self.ucs_btn.config(state="disabled", text="Solving...")
+        self.ucs_btn.config(text="Solving...")
+        self.display_message = "Solving with UCS..."
+        self.message_timeout = 0
+        self._lock_ui()
+        self.draw()
  
         tabSnap = copy.deepcopy(self.tableau)
         fcSnap = list(self.freecells)
         fdSnap = copy.deepcopy(self.foundations)
+        gen = self._solve_generation
  
         def _run():
             actions = run_ucs(
@@ -638,7 +731,7 @@ class FreeCell:
                 max_states=5_000_000,
                 timeout_sec=120
             )
-            self.root.after(0, lambda: self._on_solve_done(enc, actions))
+            self.root.after(0, lambda: self._on_solve_done(enc, actions, gen))
  
         self._solve_thread = threading.Thread(target=_run, daemon=True)
         self._solve_thread.start()
@@ -652,16 +745,21 @@ class FreeCell:
         if self._solve_cache and self._solve_cache[0] == enc:
             self._solve_actions = list(self._solve_cache[1])
             self._current_replay_gen = self._solve_generation
-            self._lock_input()
+            self._lock_ui()
             self._replay_next()
             return
 
         self._solving = True
-        self.solve_btn.config(state="disabled", text="Solving...")
+        self.solve_btn.config(text="Solving...")
+        self.display_message = "Solving with A*..."
+        self.message_timeout = 0
+        self._lock_ui()
+        self.draw()
  
         tab_snap = copy.deepcopy(self.tableau)
         fc_snap = list(self.freecells)
         fd_snap = copy.deepcopy(self.foundations)
+        gen = self._solve_generation
  
         def _run():
             actions = run_astar(
@@ -669,7 +767,7 @@ class FreeCell:
                 max_states=2_000_000,
                 timeout_sec=120
             )
-            self.root.after(0, lambda: self._on_solve_done(enc, actions))
+            self.root.after(0, lambda: self._on_solve_done(enc, actions, gen))
  
         self._solve_thread = threading.Thread(target=_run, daemon=True)
         self._solve_thread.start()

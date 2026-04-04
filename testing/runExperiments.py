@@ -54,24 +54,24 @@ def runEvaluation(algoName, algorithmFunc, tab, fc, fd):
 def runAllFixedTests():
     for currentSeed in TEST_SEEDS_:
         print(f"\n======================================")
-        print(f"       RUNNING SEED: {currentSeed}")
+        print(f"         RUNNING SEED: {currentSeed}")
         currentDeck = createDeckFromSeed(currentSeed)
         
         tab, fc, fd = setupBoard(currentDeck)
         bfsTime, bfsMem, bfsNodes, bfsLen = runEvaluation("BFS", runBfs, tab, fc, fd)
-        print(f"-> BFS   | Time: {bfsTime:.4f}s | Mem: {bfsMem} bytes | Moves: {bfsLen}\n")
-        
-        tab, fc, fd = setupBoard(currentDeck)
-        astarTime, astarMem, astarNodes, astarLen = runEvaluation("A*", runAstar, tab, fc, fd)
-        print(f"-> A* | Time: {astarTime:.4f}s | Mem: {astarMem} bytes | Moves: {astarLen}\n")
-        
-        tab, fc, fd = setupBoard(currentDeck)
-        ucsTime, ucsMem, ucsNodes, ucsLen = runEvaluation("UCS", runUcs, tab, fc, fd)
-        print(f"-> UCS   | Time: {ucsTime:.4f}s | Mem: {ucsMem} bytes | Moves: {ucsLen}\n")
+        print(f"-> BFS   | Time: {bfsTime:.4f}s | Moves: {bfsLen}\n")
         
         tab, fc, fd = setupBoard(currentDeck)
         dfsTime, dfsMem, dfsNodes, dfsLen = runEvaluation("DFS", runDfs, tab, fc, fd)
-        print(f"-> DFS   | Time: {dfsTime:.4f}s | Mem: {dfsMem} bytes | Moves: {dfsLen}\n")
+        print(f"-> DFS   | Time: {dfsTime:.4f}s | Moves: {dfsLen}\n")
+        
+        tab, fc, fd = setupBoard(currentDeck)
+        ucsTime, ucsMem, ucsNodes, ucsLen = runEvaluation("UCS", runUcs, tab, fc, fd)
+        print(f"-> UCS   | Time: {ucsTime:.4f}s | Moves: {ucsLen}\n")
+        
+        tab, fc, fd = setupBoard(currentDeck)
+        astarTime, astarMem, astarNodes, astarLen = runEvaluation("A*", runAstar, tab, fc, fd)
+        print(f"-> A* | Time: {astarTime:.4f}s | Moves: {astarLen}\n")
 
 if __name__ == "__main__":
     runAllFixedTests()
